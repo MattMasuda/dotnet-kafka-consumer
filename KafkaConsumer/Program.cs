@@ -33,23 +33,16 @@ namespace KafkaConsumer
 
             using (var consumer = new Consumer<string, string>(config, new StringDeserializer(Encoding.UTF8), new StringDeserializer(Encoding.UTF8)))
             {
-                // TODO: Figure out why this is required
-                consumer.Assign(new List<TopicPartitionOffset>
+                consumer.Subscribe(topic);
+
+                consumer.OnMessage += (s, msg) =>
                 {
-                    new TopicPartitionOffset(topic, 0, 0), 
-                    new TopicPartitionOffset(topic, 1, 0),
-                    new TopicPartitionOffset(topic, 2, 0),
-                });
+                    Console.WriteLine($"Partition: {msg.Partition} Offset: {msg.Offset} Key: {msg.Key} Value: {msg.Value}");
+                };
 
                 while (true)
                 {
-                    Message<string, string> msg;
-                    // TODO: Replace this with consumer.OnMessage or consumer.Poll
-                    //consumer.Poll(TimeSpan.FromMilliseconds(100));
-                    if (consumer.Consume(out msg, TimeSpan.FromMilliseconds(100)))
-                    {
-                        Console.WriteLine($"Partition: {msg.Partition} Offset: {msg.Offset} Key: {msg.Key} Value: {msg.Value}");
-                    }
+                    consumer.Poll(TimeSpan.FromMilliseconds(100));
                 }
             }
         }
