@@ -22,6 +22,7 @@ namespace KafkaConsumer
             {
                 { "group.id", consumerGroupId },
                 { "bootstrap.servers", bootstrapList },
+                { "auto.offset.reset", "smallest" },
                 // All of the following is for Bluemix Message Hub
                 { "security.protocol", "SASL_SSL" },
                 { "sasl.mechanisms", "PLAIN" },
@@ -33,6 +34,7 @@ namespace KafkaConsumer
 
             using (var consumer = new Consumer<string, string>(config, new StringDeserializer(Encoding.UTF8), new StringDeserializer(Encoding.UTF8)))
             {
+                Console.WriteLine($"Subscribing to topic {topic}");
                 consumer.Subscribe(topic);
 
                 consumer.OnMessage += (s, msg) =>
@@ -40,6 +42,7 @@ namespace KafkaConsumer
                     Console.WriteLine($"Partition: {msg.Partition} Offset: {msg.Offset} Key: {msg.Key} Value: {msg.Value}");
                 };
 
+                Console.WriteLine("Starting poll loop");
                 while (true)
                 {
                     consumer.Poll(TimeSpan.FromMilliseconds(100));
