@@ -13,9 +13,8 @@ namespace KafkaConsumer
         {
             string bootstrapList = ConfigurationManager.AppSettings["bootstrapServers"];
             string topic = ConfigurationManager.AppSettings["topic"];
-            string saslConfig = ConfigurationManager.AppSettings["saslConfig"];
-            string user = args[0];
-            string password = args[1];
+            string user = args[0] ?? string.Empty;
+            string password = args[1] ?? string.Empty;
             string consumerGroupId = ConfigurationManager.AppSettings["consumerGroupId"];
 
             var config = new Dictionary<string, object>
@@ -24,6 +23,7 @@ namespace KafkaConsumer
                 { "bootstrap.servers", bootstrapList },
                 { "auto.offset.reset", "smallest" },
                 // All of the following is for Bluemix Message Hub
+                // Comment out these lines when using a standard Kafka cluster
                 { "security.protocol", "SASL_SSL" },
                 { "sasl.mechanisms", "PLAIN" },
                 { "sasl.username", user },
@@ -36,9 +36,12 @@ namespace KafkaConsumer
             {
                 Console.WriteLine($"Subscribing to topic {topic}");
                 consumer.Subscribe(topic);
+                // You can also subscribe to multiple topics with 
+                // Subscribe(IEnumerable<string> topics)
 
                 consumer.OnMessage += (s, msg) =>
                 {
+                    // This is the actual message handling code
                     Console.WriteLine($"Partition: {msg.Partition} Offset: {msg.Offset} Key: {msg.Key} Value: {msg.Value}");
                 };
 
