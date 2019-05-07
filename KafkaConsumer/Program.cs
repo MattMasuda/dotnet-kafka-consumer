@@ -1,9 +1,7 @@
 ﻿using Confluent.Kafka;
-using Confluent.Kafka.Serialization;
 using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Configuration;
+using System.Threading;
 
 namespace KafkaConsumer
 {
@@ -11,45 +9,74 @@ namespace KafkaConsumer
     {
         static void Main(string[] args)
         {
-            string bootstrapList = ConfigurationManager.AppSettings["bootstrapServers"];
-            string topic = ConfigurationManager.AppSettings["topic"];
-            string user = args[0] ?? string.Empty;
-            string password = args[1] ?? string.Empty;
-            string consumerGroupId = ConfigurationManager.AppSettings["consumerGroupId"];
+            var bootstrapList = ConfigurationManager.AppSettings["bootstrapServers"];
+            var topic = ConfigurationManager.AppSettings["topic"];
+            var consumerGroupId = ConfigurationManager.AppSettings["consumerGroupId"];
 
-            var config = new Dictionary<string, object>
+            var cts = new CancellationTokenSource();
+            var cancellationToken = cts.Token;
+            var config = new ConsumerConfig
             {
-                { "group.id", consumerGroupId },
-                { "bootstrap.servers", bootstrapList },
-                { "auto.offset.reset", "smallest" },
-                // All of the following is for Bluemix Message Hub
-                // Comment out these lines when using a standard Kafka cluster
-                { "security.protocol", "SASL_SSL" },
-                { "sasl.mechanisms", "PLAIN" },
-                { "sasl.username", user },
-                { "sasl.password", password },
-                { "api.version.request", "true" },
-                { "ssl.ca.location", @"DigicertGlobalRoot.cer" } // This is required to validate IBM's SSL certificate
+                GroupId = consumerGroupId,
+                BootstrapServers = bootstrapList,
+                AutoOffsetReset = AutoOffsetReset.Earliest,
+                // Uncomment the following lines for Message Hub
+                //EnableAutoCommit = true,
+                //SecurityProtocol = SecurityProtocol.SaslSsl,
+                //SaslMechanism = SaslMechanism.Plain,
+                //SaslUsername = args.Length > 0 ? args[0] : string.Empty,
+                //SaslPassword = args.Length > 1 ? args[1] : string.Empty,
+                //ApiVersionRequest = true,
+                //SslCaLocation = @"DigicertGlobalRoot.cer"
             };
 
-            using (var consumer = new Consumer<string, string>(config, new StringDeserializer(Encoding.UTF8), new StringDeserializer(Encoding.UTF8)))
+            using (var consumer = new ConsumerBuilder<string, string>(config)
+                .SetErrorHandler((_, e) => Console.WriteLine($"Error: {e.Reason}"))
+                .SetStatisticsHandler((_, json) => Console.WriteLine($"Statistics: {json}"))
+                .SetPartitionsAssignedHandler((c, partitions) => Console.WriteLine($"Assigned partitions: [{string.Join(", ", partitions)}]"))
+                .SetPartitionsRevokedHandler((c, partitions) => Console.WriteLine($"Revoking assignment: [{string.Join(", ", partitions)}]"))
+                .Build())
+            
             {
                 Console.WriteLine($"Subscribing to topic {topic}");
                 consumer.Subscribe(topic);
                 // You can also subscribe to multiple topics with 
                 // Subscribe(IEnumerable<string> topics)
+                
+                Consume(consumer, cancellationToken);
+            }
+        }
 
-                consumer.OnMessage += (s, msg) =>
-                {
-                    // This is the actual message handling code
-                    Console.WriteLine($"Partition: {msg.Partition} Offset: {msg.Offset} Key: {msg.Key} Value: {msg.Value}");
-                };
-
-                Console.WriteLine("Starting poll loop");
+        private static void Consume(IConsumer<string, string> consumer, CancellationToken cancellationToken)
+        {
+            try
+            {
                 while (true)
                 {
-                    consumer.Poll(TimeSpan.FromMilliseconds(100));
+                    try
+                    {
+                        var consumeResult = consumer.Consume(cancellationToken);
+
+                        if (consumeResult.IsPartitionEOF)
+                        {
+                            Console.WriteLine(
+                                $"Reached end of topic {consumeResult.Topic}, partition {consumeResult.Partition}, offset {consumeResult.Offset}.");
+
+                            continue;
+                        }
+
+                        Console.WriteLine($"Partition: {consumeResult.Partition} Offset: {consumeResult.Offset} Key: {consumeResult.Key} Value: {consumeResult.Value}");
+                    }
+                    catch (ConsumeException e)
+                    {
+                        Console.WriteLine($"Consume error: {e.Error.Reason}");
+                    }
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("Closing consumer.");
+                consumer.Close();
             }
         }
     }
